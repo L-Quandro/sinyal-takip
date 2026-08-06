@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="tr" class="dark-mode">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Sinyal Takip Sistemi</title>
+
+    <!-- PWA: Manifest ve İkonlar -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0a0a0c">
+    <link rel="icon" href="icon-192.png" type="image/png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
+    <!-- iOS Safari için PWA destek meta etiketleri -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Sinyal Takip">
+    <style>
+        :root {
+            --bg-color: #0a0a0c;
+            --panel-bg: linear-gradient(180deg, #121218 0%, #09090c 100%);
+            --text-main: #fff;
+            --km-color: #00e676;
+            --station-color: #ffc107;
+            --border-color: #2a2a3a;
+            --wheel-bg: #0c0c10;
+            --topbar-bg: #141419;
+            --subtext-color: #888;
+            --brand-blue: rgba(100,181,246,.18);
+            --row-opacity: 0.55;
+        }
+        html.light-mode {
+            --bg-color: #f0f2f5;
+            --panel-bg: linear-gradient(180deg, #fff 0%, #e4e8ed 100%);
+            --text-main: #1a1a1a;
+            --km-color: #00642e;
+            --station-color: #d35400;
+            --border-color: #cbd5e1;
+            --wheel-bg: #e2e8f0;
+            --topbar-bg: #cbd5e1;
+            --subtext-color: #666;
+            --brand-blue: rgba(25,118,210,.75);
+            --row-opacity: 0.65;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            height: 100dvh;
+            background: var(--bg-color);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+        }
+        .hidden { display: none !important; }
+
+        /* Setup Screen */
+        #setup-screen {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 24px;
+        }
+        #setup-screen h2 { color: var(--station-color); margin-bottom: 30px; letter-spacing: 1px; text-align: center; }
+        .select-box {
+            width: 100%; max-width: 320px; padding: 16px; margin-bottom: 20px;
+            font-size: 1.1rem; border-radius: 12px; border: 1px solid var(--border-color);
+            background: var(--wheel-bg); color: var(--text-main); outline: none;
+        }
+        .start-btn {
+            width: 100%; max-width: 320px; padding: 18px; font-size: 1.2rem; font-weight: bold;
+            border-radius: 12px; border: none; background: linear-gradient(135deg,#00e676,#00b0ff);
+            color: #000; cursor: pointer; box-shadow: 0 4px 15px rgba(0,230,118,.3);
+        }
+
+        /* Driving Screen */
+        #driving-screen {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            width: 100%;
+        }
+
+        /* Top Bar */
+        .top-bar {
+            background: var(--topbar-bg);
+            padding: 8px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+            z-index: 20;
+        }
+        .route-name { font-size: .85rem; font-weight: 700; text-transform: uppercase; }
+        .top-controls { display: flex; gap: 6px; }
+        .control-btn {
+            background: var(--wheel-bg); color: var(--text-main);
+            border: 1px solid var(--border-color); padding: 5px 8px;
+            border-radius: 6px; font-size: .8rem; cursor: pointer; font-weight: bold;
+        }
+
+        /* Middle Touch Area */
+        .touch-zone-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+            min-height: 0;
+        }
+        .touch-top, .touch-bottom {
+            position: absolute; left: 0; right: 0; width: 100%;
+            z-index: 5; cursor: pointer; height: 50%; background: transparent;
+            transition: background-color 0.1s ease;
+        }
+        .touch-top { top: 0; }
+        .touch-bottom { bottom: 0; }
+
+        .touch-top.clicked { background-color: rgba(0, 176, 255, 0.15); }
+        .touch-bottom.clicked { background-color: rgba(0, 230, 118, 0.15); }
+
+        html.light-mode .touch-top.clicked { background-color: rgba(0, 176, 255, 0.30); }
+        html.light-mode .touch-bottom.clicked { background-color: rgba(0, 230, 118, 0.30); }
+
+        .ripple-effect {
+            position: absolute; border-radius: 50%; background: rgba(255,255,255,.12);
+            transform: scale(0); animation: ripple .15s ease-out; pointer-events: none;
+        }
+        html.light-mode .ripple-effect { background: rgba(0,0,0,.15); }
+        @keyframes ripple { to { transform: scale(3); opacity: 0; } }
+
+        .display-card {
+            flex: 1; margin: 8px 10px; background: var(--panel-bg);
+            border: 1px solid var(--border-color); border-radius: 20px;
+            display: flex; flex-direction: column; justify-content: center;
+            align-items: center; padding: 10px; box-shadow: inset 0 0 20px rgba(0,0,0,.4);
+            pointer-events: none; z-index: 10; position: relative;
+            transition: transform 0.1s ease;
+        }
+        .display-card.pulse { transform: scale(0.985); }
+
+        .station-badge {
+            font-size: 1.1rem; color: var(--station-color); background: rgba(255,193,7,.18);
+            padding: 6px 20px; border-radius: 24px; border: 1.5px solid rgba(255,193,7,.6);
+            margin-bottom: 8px; font-weight: 800; pointer-events: auto; z-index: 25; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(255,193,7,.2);
+            transition: transform 0.1s ease, background 0.1s ease;
+        }
+        .station-badge:active { transform: scale(0.93); background: rgba(255,193,7,.35); }
+
+        .main-info-group { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; }
+        .km-box { display: flex; align-items: baseline; gap: 8px; }
+        .km-label { font-size: 1.1rem; opacity: .7; font-weight: 600; }
+
+        .km-value {
+            font-size: 2.6rem; font-weight: 800; color: var(--km-color);
+            letter-spacing: 1px; font-family: monospace;
+        }
+
+        .signal-type-tag {
+            margin-top: 6px; font-size: .85rem; opacity: .9; background: var(--wheel-bg);
+            padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border-color);
+        }
+
+        .brand-text { position: absolute; bottom: 16px; font-size: .75rem; font-weight: 600; color: var(--brand-blue); letter-spacing: 1px; transition: color 0.2s ease; }
+        .click-hint { position: absolute; bottom: 4px; display: none; }
+
+        /* Akıcı Çark Sistemli Alt Panel */
+        .triple-panel-container {
+            flex-shrink: 0; background: var(--wheel-bg); border-top: 2px solid var(--border-color);
+            display: flex; flex-direction: column; padding: 4px 12px; gap: 4px;
+            box-sizing: border-box; z-index: 20; touch-action: none;
+        }
+
+        .panel-row {
+            height: 38px; display: flex; justify-content: space-between; align-items: center;
+            padding: 0 16px; border-radius: 8px; font-size: 0.9rem; opacity: var(--row-opacity);
+            transition: opacity 0.15s ease, background 0.15s ease; border: 1px solid transparent; cursor: pointer;
+        }
+        .panel-row:active { background: rgba(0, 0, 0, 0.08); }
+        html.light-mode .panel-row:active { background: rgba(0, 0, 0, 0.05); }
+
+        .panel-row .p-station { color: var(--station-color); font-size: 0.8rem; font-weight: 600; flex: 1; text-align: left; }
+        .panel-row .p-name { font-weight: 700; flex: 1; text-align: center; }
+        .panel-row .p-km { font-family: monospace; flex: 1; text-align: right; }
+
+        .panel-row.empty { opacity: 0.2 !important; pointer-events: none; }
+
+        .panel-row.active {
+            opacity: 1 !important; background: rgba(0, 230, 118, 0.12);
+            border: 1.5px solid var(--km-color); font-size: 1rem; box-shadow: 0 2px 8px rgba(0,230,118,0.15);
+        }
+        .panel-row.active .p-name { color: var(--text-main); font-weight: 800; }
+        .panel-row.active .p-km { color: var(--km-color); font-weight: 800; }
+
+        /* İstasyon Seçim Modal Penceresi */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,.85); z-index: 100; display: flex;
+            justify-content: center; align-items: center; padding: 20px; backdrop-filter: blur(4px);
+        }
+        .modal-card {
+            background: var(--topbar-bg); border: 1px solid var(--border-color);
+            border-radius: 16px; padding: 20px; width: 100%; max-width: 320px;
+            display: flex; flex-direction: column; gap: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.6);
+        }
+        .modal-card h3 { margin: 0 0 5px; color: var(--station-color); text-align: center; font-size: 1.1rem; }
+        .station-option-btn {
+            background: var(--wheel-bg); color: var(--text-main); border: 1px solid var(--border-color);
+            padding: 14px; border-radius: 10px; font-weight: bold; font-size: 1.05rem; cursor: pointer; text-align: center;
+            transition: background 0.1s;
+        }
+        .station-option-btn:active { background: var(--station-color); color: #000; }
+        #dimmer-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: #000; opacity: 0; pointer-events: none; z-index: 99; transition: opacity .2s;
+        }
+
+        /* --- OTOMATİK BOYUTLANDIRMA & YATAY MOD (LANDSCAPE) ENTEGRASYONU --- */
+        @media (orientation: landscape) and (max-height: 500px) {
+            .top-bar { padding: 4px 10px; }
+            .display-card { margin: 4px 10px; padding: 4px; }
+            .station-badge { font-size: 0.95rem; padding: 4px 14px; margin-bottom: 4px; }
+            .km-value { font-size: 2rem; }
+            .signal-type-tag { margin-top: 2px; font-size: 0.75rem; padding: 2px 8px; }
+            .brand-text { display: none; }
+            .triple-panel-container { padding: 2px 10px; }
+            .panel-row { height: 32px; font-size: 0.8rem; }
+        }
+    </style>
+</head>
+<body>
+    <div id="dimmer-overlay"></div>
+
+    <div id="station-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <h3>İSTASYON SEÇİN</h3>
+            <div id="station-list-options" style="display:flex; flex-direction:column; gap:8px; max-height: 250px; overflow-y: auto;"></div>
+            <button class="station-option-btn" style="background:#222; margin-top:6px; color:#aaa;" onclick="toggleModal(0)">Kapat</button>
+        </div>
+    </div>
+
+    <div id="setup-screen">
+        <h2>SİNYAL TAKİP SİSTEMİ</h2>
+        <select id="route-select" class="select-box">
+            <option value="yahsihan_hasanbey">Yahşihan ➔ Hasanbey</option>
+            <option value="hasanbey_yahsihan">Hasanbey ➔ Yahşihan</option>
+            <option value="yahsihan_bogazkopru">Yahşihan ➔ Boğazköprü</option>
+        </select>
+        <button class="start-btn" onclick="startDriving()">SÜRÜŞE BAŞLA</button>
+    </div>
+
+    <div id="driving-screen" class="hidden">
+        <div class="top-bar">
+            <span class="route-name" id="ui-route-name">Yahşihan - Hasanbey</span>
+            <div class="top-controls">
+                <button class="control-btn" onclick="toggleBright()" id="btn-bright" title="Parlaklık Seviyesi">💡 Normal</button>
+                <button class="control-btn" onclick="toggleTheme()" id="btn-theme" title="Gece/Gündüz Modu">🌙 Gece</button>
+                <button class="control-btn" onclick="toggleScreen(0)" title="Güzergahı Değiştir">Hat Seç</button>
+            </div>
+        </div>
+
+        <div class="touch-zone-container">
+            <div class="touch-top" id="zone-top" onclick="touch(event, 1)"></div>
+            <div class="touch-bottom" id="zone-bottom" onclick="touch(event, -1)"></div>
+
+            <div class="display-card" id="main-display-card">
+                <div class="station-badge" id="m-station" onclick="toggleModal(1)">-</div>
+
+                <div class="main-info-group">
+                    <div class="km-box"><span class="km-label">KM</span><span class="km-value" id="m-km">-</span></div>
+                    <div class="signal-type-tag" id="m-type">-</div>
+                </div>
+
+                <div class="brand-text">Powered by Furkan NABİT</div>
+            </div>
+        </div>
+
+        <div class="triple-panel-container" id="wheel-container">
+            <div class="panel-row" id="row-prev" onclick="navigateRow(-1)">
+                <span class="p-station" id="p-prev-s">-</span>
+                <span class="p-name" id="p-prev-n">-</span>
+                <span class="p-km" id="p-prev-k">-</span>
+            </div>
+            <div class="panel-row active" id="row-curr">
+                <span class="p-station" id="p-curr-s">-</span>
+                <span class="p-name" id="p-curr-n">-</span>
+                <span class="p-km" id="p-curr-k">-</span>
+            </div>
+            <div class="panel-row" id="row-next" onclick="navigateRow(1)">
+                <span class="p-station" id="p-next-s">-</span>
+                <span class="p-name" id="p-next-n">-</span>
+                <span class="p-km" id="p-next-k">-</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const routeDB = {
+            yahsihan_hasanbey: [
+                { s: "YAHŞİHAN", n: "K041", k: "83/13", t: "DİĞER SİNYAL" },
+                { s: "YAHŞİHAN", n: "S151 BLOK", k: "80/18", t: "BLOK" },
+                { s: "YAHŞİHAN", n: "S141 BLOK", k: "76/02", t: "BLOK" },
+                { s: "YAHŞİHAN", n: "K031 YAKLAŞMA", k: "71/18", t: "YAKLAŞMA" },
+                { s: "IRMAK", n: "S02 GİRİŞ", k: "70/17A", t: "İSTASYON GİRİŞ" },
+                { s: "IRMAK", n: "S31 ÇIKIŞ", k: "69/19A", t: "İSTASYON ÇIKIŞ" },
+                { s: "IRMAK", n: "S021 BLOK", k: "67/24", t: "BLOK" },
+                { s: "IRMAK", n: "Y131 YAKLAŞMA", k: "62/09", t: "YAKLAŞMA" },
+                { s: "KILIÇLAR", n: "S02 GİRİŞ", k: "60/33", t: "İSTASYON GİRİŞ" },
+                { s: "KILIÇLAR", n: "S21 ÇIKIŞ", k: "60/04", t: "İSTASYON ÇIKIŞ" },
+                { s: "KILIÇLAR", n: "S121 BLOK", k: "58/17", t: "BLOK" },
+                { s: "KILIÇLAR", n: "Y111 YAKLAŞMA", k: "53/13", t: "YAKLAŞMA" },
+                { s: "KURBAĞALI", n: "S02 GİRİŞ", k: "52/06", t: "İSTASYON GİRİŞ" },
+                { s: "KURBAĞALI", n: "S31 ÇIKIŞ", k: "51/11", t: "İSTASYON ÇIKIŞ" },
+                { s: "KURBAĞALI", n: "S101 BLOK", k: "49/25", t: "BLOK" },
+                { s: "KURBAĞALI", n: "Y091 YAKLAŞMA", k: "46/16", t: "YAKLAŞMA" },
+                { s: "ELMADAĞ", n: "S02 GİRİŞ", k: "44/12", t: "İSTASYON GİRİŞ" },
+                { s: "ELMADAĞ", n: "S31 ÇIKIŞ", k: "43/24", t: "İSTASYON ÇIKIŞ" },
+                { s: "ELMADAĞ", n: "S081 BLOK", k: "41/22", t: "BLOK" },
+                { s: "ELMADAĞ", n: "Y071 YAKLAŞMA", k: "38/14", t: "YAKLAŞMA" },
+                { s: "LALABEL", n: "S02 GİRİŞ", k: "36/29", t: "İSTASYON GİRİŞ" },
+                { s: "LALABEL", n: "S11 ÇIKIŞ", k: "36/01", t: "İSTASYON ÇIKIŞ" },
+                { s: "LALABEL", n: "S61 BLOK", k: "36/24", t: "BLOK" },
+                { s: "LALABEL", n: "S51 BLOK", k: "32/03", t: "BLOK" },
+                { s: "LALABEL", n: "Y041 YAKLAŞMA", k: "29*7", t: "YAKLAŞMA" },
+                { s: "LALAHAN", n: "S02 GİRİŞ", k: "27/30", t: "İSTASYON GİRİŞ" },
+                { s: "LALAHAN", n: "MAKAS", k: "27*12", t: "MAKAS" },
+                { s: "LALAHAN", n: "S31 ÇIKIŞ", k: "26/37K", t: "İSTASYON ÇIKIŞ" },
+                { s: "LALAHAN", n: "BS031 BLOK", k: "25*08", t: "BLOK" },
+                { s: "LALAHAN", n: "KBS021 VARYA", k: "23*06", t: "VARYA" },
+                { s: "NENEK", n: "S02 GİRİŞ", k: "21/16", t: "İSTASYON GİRİŞ" },
+                { s: "NENEK", n: "S11 ÇIKIŞ (konsol)", k: "19+0 km", t: "İSTASYON ÇIKIŞ" },
+                { s: "NENEK", n: "KBS155 (konsol)165", k: "17+0 km", t: "DİĞER SİNYAL" },
+                { s: "NENEK", n: "S05N (konsol)07N", k: "15+500", t: "DİĞER SİNYAL" },
+                { s: "KAYAŞ", n: "S07K GİRİŞ (KONSOL)", k: "12+54", t: "İSTASYON GİRİŞ" },
+                { s: "KAYAŞ", n: "S61K ÇIKIŞ (cüce)", k: "12+0", t: "İSTASYON ÇIKIŞ" },
+                { s: "KAYAŞ", n: "S01B BLOK", k: "10*20", t: "BLOK" },
+                { s: "KAYAŞ", n: "BS315 (konsol)", k: "7/0", t: "DİĞER SİNYAL" },
+                { s: "KAYAŞ", n: "KBS313 (konsol)", k: "3*42", t: "DİĞER SİNYAL" },
+                { s: "ANKARA", n: "S05A GİRİŞ", k: "1*11", t: "İSTASYON GİRİŞ" },
+                { s: "ANKARA", n: "S41A ÇIKIŞ (cüce)", k: "—", t: "İSTASYON ÇIKIŞ" },
+                { s: "ANKARA", n: "KBS509", k: "562+42", t: "DİĞER SİNYAL" },
+                { s: "ANKARA", n: "S07M", k: "561+12", t: "DİĞER SİNYAL" },
+                { s: "MARŞANDİZ", n: "S09M GİRİŞ", k: "560+24", t: "İSTASYON GİRİŞ" },
+                { s: "MARŞANDİZ", n: "S51M ÇIKIŞ", k: "558+46", t: "İSTASYON ÇIKIŞ" },
+                { s: "MARŞANDİZ", n: "KBS507", k: "556+35", t: "DİĞER SİNYAL" },
+                { s: "YILDIRIM", n: "S01AS GİRİŞ", k: "554+01", t: "İSTASYON GİRİŞ" },
+                { s: "YILDIRIM", n: "S11 ÇIKIŞ", k: "553+0", t: "İSTASYON ÇIKIŞ" },
+                { s: "YILDIRIM", n: "KBS505", k: "550+16", t: "DİĞER SİNYAL" },
+                { s: "YILDIRIM", n: "S01D", k: "548+32", t: "DİĞER SİNYAL" },
+                { s: "SİNCAN", n: "S13S GİRİŞ", k: "542+43", t: "İSTASYON GİRİŞ" },
+                { s: "SİNCAN", n: "S11S ÇIKIŞ (Sincan Masa)", k: "542+17", t: "İSTASYON ÇIKIŞ" },
+                { s: "SİNCAN", n: "2BH BLOK", k: "541+0", t: "BLOK" },
+                { s: "SİNCAN", n: "5359 BLOK", k: "536+0", t: "BLOK" },
+                { s: "SİNCAN", n: "5291Y YAKLAŞMA", k: "529+04", t: "YAKLAŞMA" },
+                { s: "ESENKENT", n: "S2B GİRİŞ", k: "528+09", t: "İSTASYON GİRİŞ" },
+                { s: "ESENKENT", n: "SBA ÇIKIŞ", k: "527+09", t: "İSTASYON ÇIKIŞ" },
+                { s: "ESENKENT", n: "S5257 BLOK", k: "525+14", t: "BLOK" },
+                { s: "ESENKENT", n: "S5207 BLOK", k: "520+16", t: "BLOK" },
+                { s: "ESENKENT", n: "5155 YAKLAŞMA", k: "515+12", t: "YAKLAŞMA" },
+                { s: "MALIKÖY", n: "S2B GİRİŞ", k: "514+09", t: "İSTASYON GİRİŞ" },
+                { s: "MALIKÖY", n: "2BA ÇIKIŞ", k: "520+06 (kontrol edilecek)", t: "İSTASYON ÇIKIŞ" },
+                { s: "MALIKÖY", n: "5113 BLOK", k: "511+09", t: "BLOK" },
+                { s: "MALIKÖY", n: "5087 YAKLAŞMA", k: "508+07", t: "YAKLAŞMA" },
+                { s: "TEMELLİ", n: "S2B GİRİŞ", k: "507+07", t: "İSTASYON GİRİŞ" },
+                { s: "TEMELLİ", n: "2BA ÇIKIŞ", k: "506+04", t: "İSTASYON ÇIKIŞ" },
+                { s: "TEMELLİ", n: "5049 BLOK", k: "505+01", t: "BLOK" },
+                { s: "TEMELLİ", n: "5015 BLOK", k: "501+10", t: "BLOK" },
+                { s: "TEMELLİ", n: "4981 YAKLAŞMA", k: "498+03", t: "YAKLAŞMA" },
+                { s: "YENİDOĞAN", n: "S2B GİRİŞ", k: "496+11", t: "İSTASYON GİRİŞ" },
+                { s: "YENİDOĞAN", n: "2BA ÇIKIŞ", k: "495+20", t: "İSTASYON ÇIKIŞ" },
+                { s: "YENİDOĞAN", n: "4933 BLOK", k: "493+07", t: "BLOK" },
+                { s: "YENİDOĞAN", n: "4901 BLOK", k: "490+04", t: "BLOK" },
+                { s: "YENİDOĞAN", n: "4869 YAKLAŞMA", k: "487+0", t: "YAKLAŞMA" },
+                { s: "KARAPINAR", n: "S2B GİRİŞ", k: "485+16", t: "İSTASYON GİRİŞ" },
+                { s: "KARAPINAR", n: "2BA ÇIKIŞ", k: "484+17", t: "İSTASYON ÇIKIŞ" },
+                { s: "KARAPINAR", n: "4835 BLOK", k: "483+12", t: "BLOK" },
+                { s: "KARAPINAR", n: "HD52B", k: "481+22", t: "DİĞER SİNYAL" },
+                { s: "POLATLI", n: "S2B GİRİŞ", k: "480+09", t: "İSTASYON GİRİŞ" },
+                { s: "POLATLI", n: "2BA ÇIKIŞ", k: "479+10", t: "İSTASYON ÇIKIŞ" },
+                { s: "POLATLI", n: "B2BH BLOK", k: "478+04", t: "BLOK" },
+                { s: "POLATLI", n: "4767 BLOK", k: "476+18", t: "BLOK" },
+                { s: "POLATLI", n: "4735 BLOK", k: "473+21", t: "BLOK" },
+                { s: "POLATLI", n: "4707 YAKLAŞMA", k: "470+22", t: "YAKLAŞMA" },
+                { s: "İĞCİLER", n: "S2B GİRİŞ", k: "470+0", t: "İSTASYON GİRİŞ" },
+                { s: "İĞCİLER", n: "2BA ÇIKIŞ", k: "469+06", t: "İSTASYON ÇIKIŞ" },
+                { s: "İĞCİLER", n: "4661 BLOK", k: "466+08", t: "BLOK" },
+                { s: "İĞCİLER", n: "4627 YAKLAŞMA", k: "462+12", t: "YAKLAŞMA" },
+                { s: "BEYLİKKÖPRÜ", n: "S2B GİRİŞ", k: "461+05", t: "İSTASYON GİRİŞ" },
+                { s: "BEYLİKKÖPRÜ", n: "2BA ÇIKIŞ", k: "460+0", t: "İSTASYON ÇIKIŞ" },
+                { s: "BEYLİKKÖPRÜ", n: "4585 BLOK", k: "458+11", t: "BLOK" },
+                { s: "BEYLİKKÖPRÜ", n: "4533 BLOK", k: "453+06", t: "BLOK" },
+                { s: "BEYLİKKÖPRÜ", n: "4487 YAKLAŞMA", k: "448+18", t: "YAKLAŞMA" },
+                { s: "SAZILAR", n: "S2B GİRİŞ", k: "447+0", t: "İSTASYON GİRİŞ" },
+                { s: "SAZILAR", n: "2BA ÇIKIŞ", k: "446+08", t: "İSTASYON ÇIKIŞ" },
+                { s: "SAZILAR", n: "4443 BLOK", k: "444+09", t: "BLOK" },
+                { s: "SAZILAR", n: "4417 BLOK", k: "441+17", t: "BLOK" },
+                { s: "SAZILAR", n: "4383 YAKLAŞMA", k: "438+06", t: "YAKLAŞMA" },
+                { s: "İLÖREN", n: "S2B GİRİŞ", k: "437+0", t: "İSTASYON GİRİŞ" },
+                { s: "İLÖREN", n: "2BA ÇIKIŞ", k: "436+09", t: "İSTASYON ÇIKIŞ" },
+                { s: "İLÖREN", n: "4349 BLOK", k: "434+13", t: "BLOK" },
+                { s: "İLÖREN", n: "4325 YAKLAŞMA", k: "432+10", t: "YAKLAŞMA" },
+                { s: "BİÇER", n: "S2B GİRİŞ", k: "430+01", t: "İSTASYON GİRİŞ" },
+                { s: "BİÇER", n: "2BA ÇIKIŞ", k: "429+02", t: "İSTASYON ÇIKIŞ" },
+                { s: "BİÇER", n: "4265 BLOK", k: "426+11", t: "BLOK" },
+                { s: "BİÇER", n: "4231 BLOK", k: "423+02", t: "BLOK" },
+                { s: "BİÇER", n: "4183 YAKLAŞMA", k: "418+10", t: "YAKLAŞMA" },
+                { s: "SAZAK", n: "S2B GİRİŞ", k: "416+21", t: "İSTASYON GİRİŞ" },
+                { s: "SAZAK", n: "2BA ÇIKIŞ", k: "415+07", t: "İSTASYON ÇIKIŞ" },
+                { s: "SAZAK", n: "4141 BLOK", k: "414+04", t: "BLOK" },
+                { s: "SAZAK", n: "4101 BLOK", k: "410+08", t: "BLOK" },
+                { s: "SAZAK", n: "4063 YAKLAŞMA", k: "406+09", t: "YAKLAŞMA" },
+                { s: "YUNUS EMRE", n: "S2B GİRİŞ", k: "405+0", t: "İSTASYON GİRİŞ" },
+                { s: "YUNUS EMRE", n: "2BA ÇIKIŞ", k: "404+10", t: "İSTASYON ÇIKIŞ" },
+                { s: "YUNUS EMRE", n: "4017 BLOK", k: "401+14", t: "BLOK" },
+                { s: "YUNUS EMRE", n: "3971 BLOK", k: "397+05", t: "BLOK" },
+                { s: "YUNUS EMRE", n: "3933 YAKLAŞMA", k: "393+11", t: "YAKLAŞMA" },
+                { s: "YALINLI", n: "S2B GİRİŞ", k: "391+10", t: "İSTASYON GİRİŞ" },
+                { s: "YALINLI", n: "2BA ÇIKIŞ", k: "390+07", t: "İSTASYON ÇIKIŞ" },
+                { s: "YALINLI", n: "3887 BLOK", k: "388+23", t: "BLOK" },
+                { s: "YALINLI", n: "3825 BLOK", k: "382+12", t: "BLOK" },
+                { s: "YALINLI", n: "3757 YAKLAŞMA", k: "375+22", t: "YAKLAŞMA" },
+                { s: "BEYLİKOVA", n: "S2B GİRİŞ", k: "374+20", t: "İSTASYON GİRİŞ" },
+                { s: "BEYLİKOVA", n: "2BA ÇIKIŞ", k: "373+22", t: "İSTASYON ÇIKIŞ" },
+                { s: "BEYLİKOVA", n: "3721 BLOK", k: "372+07", t: "BLOK" },
+                { s: "BEYLİKOVA", n: "3673 YAKLAŞMA", k: "367+08", t: "YAKLAŞMA" },
+                { s: "ÇARDAKBAŞI", n: "S2B GİRİŞ", k: "365+15", t: "İSTASYON GİRİŞ" },
+                { s: "ÇARDAKBAŞI", n: "2BA ÇIKIŞ", k: "364+18", t: "İSTASYON ÇIKIŞ" },
+                { s: "ÇARDAKBAŞI", n: "3635 BLOK", k: "363+12", t: "BLOK" },
+                { s: "ÇARDAKBAŞI", n: "3541 YAKLAŞMA", k: "354+06", t: "YAKLAŞMA" },
+                { s: "ALPU", n: "S2B GİRİŞ", k: "353+02", t: "İSTASYON GİRİŞ" },
+                { s: "ALPU", n: "2BA ÇIKIŞ", k: "351+16", t: "İSTASYON ÇIKIŞ" },
+                { s: "ALPU", n: "3501 BLOK", k: "350+04", t: "BLOK" },
+                { s: "ALPU", n: "3435 BLOK", k: "343+15", t: "BLOK" },
+                { s: "ALPU", n: "3373 YAKLAŞMA", k: "337+05", t: "YAKLAŞMA" },
+                { s: "AĞAPINAR", n: "S2B GİRİŞ", k: "336+05", t: "İSTASYON GİRİŞ" },
+                { s: "AĞAPINAR", n: "2BA ÇIKIŞ", k: "334+17", t: "İSTASYON ÇIKIŞ" },
+                { s: "AĞAPINAR", n: "3335 BLOK", k: "333+11", t: "BLOK" },
+                { s: "AĞAPINAR", n: "3291 BLOK", k: "329+07", t: "BLOK" },
+                { s: "AĞAPINAR", n: "3257 YAKLAŞMA", k: "326+0", t: "YAKLAŞMA" },
+                { s: "HASANBEY", n: "S2B GİRİŞ", k: "324+0", t: "İSTASYON GİRİŞ" }
+            ],
+            hasanbey_yahsihan: [
+                { s: "HASANBEY", n: "S06B ÇIKIŞ", k: "—", t: "İSTASYON ÇIKIŞ" },
+                { s: "HASANBEY", n: "3258 BLOK", k: "325+5", t: "BLOK" },
+                { s: "HASANBEY", n: "3292 BLOK", k: "329+5", t: "BLOK" },
+                { s: "HASANBEY", n: "3336 YAKLAŞMA", k: "333+10", t: "YAKLAŞMA" },
+                { s: "AĞAPINAR", n: "2D GİRİŞ", k: "334+16", t: "İSTASYON GİRİŞ" },
+                { s: "AĞAPINAR", n: "52DA ÇIKIŞ", k: "336+2", t: "İSTASYON ÇIKIŞ" },
+                { s: "AĞAPINAR", n: "3374 BLOK", k: "337+4", t: "BLOK" },
+                { s: "AĞAPINAR", n: "3436 BLOK", k: "343+11", t: "BLOK" },
+                { s: "AĞAPINAR", n: "3502 YAKLAŞMA", k: "350+03", t: "YAKLAŞMA" },
+                { s: "ALPU", n: "2D GİRİŞ", k: "351+11", t: "İSTASYON GİRİŞ" },
+                { s: "ALPU", n: "52DA ÇIKIŞ", k: "352+", t: "İSTASYON ÇIKIŞ" },
+                { s: "ALPU", n: "3542 BLOK", k: "354+5", t: "BLOK" },
+                { s: "ALPU", n: "3636 YAKLAŞMA", k: "363+10", t: "YAKLAŞMA" },
+                { s: "ÇARDAKBAŞI", n: "2D GİRİŞ", k: "364+15", t: "İSTASYON GİRİŞ" },
+                { s: "ÇARDAKBAŞI", n: "52DA ÇIKIŞ", k: "365+10", t: "İSTASYON ÇIKIŞ" },
+                { s: "ÇARDAKBAŞI", n: "3674 BLOK", k: "367+7", t: "BLOK" },
+                { s: "ÇARDAKBAŞI", n: "3722 YAKLAŞMA", k: "372+5", t: "YAKLAŞMA" },
+                { s: "BEYLİKOVA", n: "2D GİRİŞ", k: "373+20", t: "İSTASYON GİRİŞ" },
+                { s: "BEYLİKOVA", n: "52DA ÇIKIŞ", k: "374+17", t: "İSTASYON ÇIKIŞ" },
+                { s: "BEYLİKOVA", n: "3758 BLOK", k: "375+21", t: "BLOK" },
+                { s: "BEYLİKOVA", n: "3826 BLOK", k: "382+10", t: "BLOK" },
+                { s: "BEYLİKOVA", n: "3888 YAKLAŞMA", k: "388+22", t: "YAKLAŞMA" },
+                { s: "YALINLI", n: "2D GİRİŞ", k: "390+5", t: "İSTASYON GİRİŞ" },
+                { s: "YALINLI", n: "52DA ÇIKIŞ", k: "391+5", t: "İSTASYON ÇIKIŞ" },
+                { s: "YALINLI", n: "3934 BLOK", k: "393+9", t: "BLOK" },
+                { s: "YALINLI", n: "3972 BLOK", k: "397+4", t: "BLOK" },
+                { s: "YALINLI", n: "4018 YAKLAŞMA", k: "401+11", t: "YAKLAŞMA" },
+                { s: "YUNUS EMRE", n: "2D GİRİŞ", k: "403+15", t: "İSTASYON GİRİŞ" },
+                { s: "YUNUS EMRE", n: "52DA ÇIKIŞ", k: "404+20", t: "İSTASYON ÇIKIŞ" },
+                { s: "YUNUS EMRE", n: "4064 BLOK", k: "406+8", t: "BLOK" },
+                { s: "YUNUS EMRE", n: "4102 BLOK", k: "410+7", t: "BLOK" },
+                { s: "YUNUS EMRE", n: "4142 YAKLAŞMA", k: "414+3", t: "YAKLAŞMA" },
+                { s: "SAZAK", n: "2D GİRİŞ", k: "415+6", t: "İSTASYON GİRİŞ" },
+                { s: "SAZAK", n: "52DA ÇIKIŞ", k: "416+17", t: "İSTASYON ÇIKIŞ" },
+                { s: "SAZAK", n: "4184 BLOK", k: "418+9", t: "BLOK" },
+                { s: "SAZAK", n: "4230 BLOK", k: "423+2", t: "BLOK" },
+                { s: "SAZAK", n: "4266 YAKLAŞMA", k: "426+10", t: "YAKLAŞMA" },
+                { s: "BİÇER", n: "2D GİRİŞ", k: "428+20", t: "İSTASYON GİRİŞ" },
+                { s: "BİÇER", n: "52DA ÇIKIŞ", k: "429+18", t: "İSTASYON ÇIKIŞ" },
+                { s: "BİÇER", n: "4324 BLOK", k: "432+9", t: "BLOK" },
+                { s: "BİÇER", n: "4346 YAKLAŞMA", k: "434+12", t: "YAKLAŞMA" },
+                { s: "İLÖREN", n: "2D GİRİŞ", k: "436+7", t: "İSTASYON GİRİŞ" },
+                { s: "İLÖREN", n: "52DA ÇIKIŞ", k: "436+25", t: "İSTASYON ÇIKIŞ" },
+                { s: "İLÖREN", n: "4382 BLOK", k: "438+5", t: "BLOK" },
+                { s: "İLÖREN", n: "4416 BLOK", k: "441+16", t: "BLOK" },
+                { s: "İLÖREN", n: "4444 YAKLAŞMA", k: "444+7", t: "YAKLAŞMA" },
+                { s: "SAZILAR", n: "2D GİRİŞ", k: "446+00", t: "İSTASYON GİRİŞ" },
+                { s: "SAZILAR", n: "52DA ÇIKIŞ", k: "446+20", t: "İSTASYON ÇIKIŞ" },
+                { s: "SAZILAR", n: "4488 BLOK", k: "448+16", t: "BLOK" },
+                { s: "SAZILAR", n: "4532 BLOK", k: "453+4", t: "BLOK" },
+                { s: "SAZILAR", n: "4586 YAKLAŞMA", k: "458+10", t: "YAKLAŞMA" },
+                { s: "BEYLİKKÖPRÜ", n: "2D GİRİŞ", k: "459+20", t: "İSTASYON GİRİŞ" },
+                { s: "BEYLİKKÖPRÜ", n: "52DA ÇIKIŞ", k: "461+03", t: "İSTASYON ÇIKIŞ" },
+                { s: "BEYLİKKÖPRÜ", n: "4626 BLOK", k: "462+20", t: "BLOK" },
+                { s: "BEYLİKKÖPRÜ", n: "4662 YAKLAŞMA", k: "466+8", t: "YAKLAŞMA" },
+                { s: "İĞCİLER", n: "2D GİRİŞ", k: "469+3", t: "İSTASYON GİRİŞ" },
+                { s: "İĞCİLER", n: "52DA ÇIKIŞ", k: "469+20", t: "İSTASYON ÇIKIŞ" },
+                { s: "İĞCİLER", n: "4708 BLOK", k: "470+22", t: "BLOK" },
+                { s: "İĞCİLER", n: "4736 BLOK", k: "473+20", t: "BLOK" },
+                { s: "İĞCİLER", n: "4766 BLOK", k: "476+17", t: "BLOK" },
+                { s: "İĞCİLER", n: "B2DH YAKLAŞMA", k: "478+03", t: "YAKLAŞMA" },
+                { s: "POLATLI", n: "2D GİRİŞ", k: "479+13", t: "İSTASYON GİRİŞ" },
+                { s: "POLATLI", n: "52DA ÇIKIŞ", k: "480+02", t: "İSTASYON ÇIKIŞ" },
+                { s: "POLATLI", n: "HD2D BLOK", k: "481+21", t: "BLOK" },
+                { s: "POLATLI", n: "4836 YAKLAŞMA", k: "483+11", t: "YAKLAŞMA" },
+                { s: "KARAPINAR", n: "2D GİRİŞ", k: "484+14", t: "İSTASYON GİRİŞ" },
+                { s: "KARAPINAR", n: "52DA ÇIKIŞ", k: "485+14", t: "İSTASYON ÇIKIŞ" },
+                { s: "KARAPINAR", n: "4868 BLOK", k: "486+17", t: "BLOK" },
+                { s: "KARAPINAR", n: "4902 BLOK", k: "490+4", t: "BLOK" },
+                { s: "KARAPINAR", n: "4934 YAKLAŞMA", k: "493+10", t: "YAKLAŞMA" },
+                { s: "YENİDOĞAN", n: "2D GİRİŞ", k: "495+16", t: "İSTASYON GİRİŞ" },
+                { s: "YENİDOĞAN", n: "52DA ÇIKIŞ", k: "496+9", t: "İSTASYON ÇIKIŞ" },
+                { s: "YENİDOĞAN", n: "4982 BLOK", k: "498+2", t: "BLOK" },
+                { s: "YENİDOĞAN", n: "5016 BLOK", k: "501+8", t: "BLOK" },
+                { s: "YENİDOĞAN", n: "5048 YAKLAŞMA", k: "505+0", t: "YAKLAŞMA" },
+                { s: "TEMELLİ", n: "2D GİRİŞ", k: "506+0", t: "İSTASYON GİRİŞ" },
+                { s: "TEMELLİ", n: "52DA ÇIKIŞ", k: "507+4", t: "İSTASYON ÇIKIŞ" },
+                { s: "TEMELLİ", n: "5086 BLOK", k: "508+11", t: "BLOK" },
+                { s: "TEMELLİ", n: "5112 YAKLAŞMA", k: "511+9", t: "YAKLAŞMA" },
+                { s: "MALIKÖY", n: "2D GİRİŞ", k: "513+7", t: "İSTASYON GİRİŞ" },
+                { s: "MALIKÖY", n: "52DA ÇIKIŞ", k: "514+13", t: "İSTASYON ÇIKIŞ" },
+                { s: "MALIKÖY", n: "5162 BLOK", k: "516+00", t: "BLOK" },
+                { s: "MALIKÖY", n: "5208 BLOK", k: "520+15", t: "BLOK" },
+                { s: "MALIKÖY", n: "5256 YAKLAŞMA", k: "525+11", t: "YAKLAŞMA" },
+                { s: "ESENKENT", n: "2D GİRİŞ", k: "527+3", t: "İSTASYON GİRİŞ" },
+                { s: "ESENKENT", n: "52DA ÇIKIŞ", k: "528+03", t: "İSTASYON ÇIKIŞ" },
+                { s: "ESENKENT", n: "5292 BLOK", k: "529+5", t: "BLOK" },
+                { s: "ESENKENT", n: "5360 BLOK", k: "535+24", t: "BLOK" },
+                { s: "ESENKENT", n: "KBS502 (sincanmasa)", k: "541+3", t: "DİĞER SİNYAL" },
+                { s: "SİNCAN", n: "S04S GİRİŞ", k: "542+3K", t: "İSTASYON GİRİŞ" },
+                { s: "SİNCAN", n: "S102S", k: "542+37", t: "DİĞER SİNYAL" },
+                { s: "SİNCAN", n: "S12S", k: "543+0", t: "DİĞER SİNYAL" },
+                { s: "SİNCAN", n: "KBS504 (gaz kapa)", k: "545+9K", t: "DİĞER SİNYAL" },
+                { s: "SİNCAN", n: "S02D", k: "547+21K", t: "DİĞER SİNYAL" },
+                { s: "SİNCAN", n: "S52D", k: "548+40", t: "DİĞER SİNYAL" },
+                { s: "SİNCAN", n: "KBS506", k: "550+16", t: "DİĞER SİNYAL" },
+                { s: "YILDIRIM", n: "S02AS GİRİŞ", k: "552+24K", t: "İSTASYON GİRİŞ" },
+                { s: "YILDIRIM", n: "S12AS ÇIKIŞ", k: "553+18", t: "İSTASYON ÇIKIŞ" },
+                { s: "YILDIRIM", n: "KBS508", k: "555+32K", t: "DİĞER SİNYAL" },
+                { s: "MARŞANDİZ", n: "S06M GİRİŞ", k: "558+0", t: "İSTASYON GİRİŞ" },
+                { s: "MARŞANDİZ", n: "ÇIKIŞ", k: "—", t: "İSTASYON ÇIKIŞ" },
+                { s: "MARŞANDİZ", n: "S2M", k: "560+00", t: "DİĞER SİNYAL" },
+                { s: "MARŞANDİZ", n: "S82M", k: "560+32", t: "DİĞER SİNYAL" },
+                { s: "MARŞANDİZ", n: "KBS510", k: "563+5", t: "DİĞER SİNYAL" },
+                { s: "ANKARA", n: "S04A GİRİŞ", k: "565+10", t: "İSTASYON GİRİŞ" },
+                { s: "ANKARA", n: "S52A ÇIKIŞ", k: "0+00", t: "İSTASYON ÇIKIŞ" },
+                { s: "ANKARA", n: "BS414 (konsol)", k: "3+40", t: "DİĞER SİNYAL" },
+                { s: "ANKARA", n: "KBS416 (mamak)", k: "6+48", t: "DİĞER SİNYAL" },
+                { s: "ANKARA", n: "S08B YAKLAŞMA", k: "9+45", t: "YAKLAŞMA" },
+                { s: "KAYAŞ", n: "S08K GİRİŞ", k: "11+21", t: "İSTASYON GİRİŞ" },
+                { s: "KAYAŞ", n: "S62K ÇIKIŞ", k: "12+20", t: "İSTASYON ÇIKIŞ" },
+                { s: "KAYAŞ", n: "S06N/08N", k: "14+00", t: "DİĞER SİNYAL" },
+                { s: "KAYAŞ", n: "KBS12/14 YAKLAŞMA", k: "16+00", t: "YAKLAŞMA" },
+                { s: "NENEK", n: "S01 GİRİŞ/S03", k: "18+00", t: "İSTASYON GİRİŞ" },
+                { s: "NENEK", n: "S12 ÇIKIŞ", k: "21+8", t: "İSTASYON ÇIKIŞ" },
+                { s: "NENEK", n: "BS022", k: "23+6", t: "DİĞER SİNYAL" },
+                { s: "NENEK", n: "KBS032 YAKLAŞMA", k: "25+8", t: "YAKLAŞMA" },
+                { s: "LALAHAN", n: "S01 GİRİŞ", k: "26+18", t: "İSTASYON GİRİŞ" },
+                { s: "LALAHAN", n: "S32A ÇIKIŞ", k: "27+8k", t: "İSTASYON ÇIKIŞ" },
+                { s: "LALAHAN", n: "S32 ÇIKIŞ", k: "27+16k", t: "İSTASYON ÇIKIŞ" },
+                { s: "LALAHAN", n: "S042", k: "29+5", t: "DİĞER SİNYAL" },
+                { s: "LALAHAN", n: "S052", k: "32+00", t: "DİĞER SİNYAL" },
+                { s: "LALAHAN", n: "Y062 YAKLAŞMA", k: "34+23", t: "YAKLAŞMA" },
+                { s: "LALABEL", n: "S01 GİRİŞ", k: "35+29", t: "İSTASYON GİRİŞ" },
+                { s: "LALABEL", n: "S12 ÇIKIŞ", k: "36+24", t: "İSTASYON ÇIKIŞ" },
+                { s: "LALABEL", n: "S72", k: "38+15", t: "DİĞER SİNYAL" },
+                { s: "LALABEL", n: "Y082 YAKLAŞMA", k: "41+22", t: "YAKLAŞMA" },
+                { s: "ELMADAĞ", n: "S01 GİRİŞ", k: "43+16", t: "İSTASYON GİRİŞ" },
+                { s: "ELMADAĞ", n: "ÇIKIŞ", k: "44+8", t: "İSTASYON ÇIKIŞ" },
+                { s: "ELMADAĞ", n: "S092", k: "46+15", t: "DİĞER SİNYAL" },
+                { s: "ELMADAĞ", n: "Y102 YAKLAŞMA", k: "49+24", t: "YAKLAŞMA" },
+                { s: "KURBAĞALI", n: "S01 GİRİŞ", k: "51+6", t: "İSTASYON GİRİŞ" },
+                { s: "KURBAĞALI", n: "S32 ÇIKIŞ", k: "52+00", t: "İSTASYON ÇIKIŞ" },
+                { s: "KURBAĞALI", n: "S12", k: "53+12", t: "DİĞER SİNYAL" },
+                { s: "KURBAĞALI", n: "Y122 YAKLAŞMA", k: "58+16", t: "YAKLAŞMA" },
+                { s: "KILIÇLAR", n: "S01 GİRİŞ", k: "60+00", t: "İSTASYON GİRİŞ" },
+                { s: "KILIÇLAR", n: "S22 ÇIKIŞ", k: "60+27", t: "İSTASYON ÇIKIŞ" },
+                { s: "KILIÇLAR", n: "S132", k: "62+8", t: "DİĞER SİNYAL" },
+                { s: "KILIÇLAR", n: "K022", k: "67+25", t: "DİĞER SİNYAL" },
+                { s: "IRMAK", n: "GİRİŞ", k: "69+11", t: "İSTASYON GİRİŞ" },
+                { s: "IRMAK", n: "S32 ÇIKIŞ", k: "70+7A", t: "İSTASYON ÇIKIŞ" },
+                { s: "IRMAK", n: "K032", k: "71+12", t: "DİĞER SİNYAL" },
+                { s: "IRMAK", n: "S142", k: "76+00", t: "DİĞER SİNYAL" },
+                { s: "IRMAK", n: "S152", k: "80+18", t: "DİĞER SİNYAL" },
+                { s: "IRMAK", n: "K042", k: "83+10", t: "DİĞER SİNYAL" },
+                { s: "YAHŞİHAN", n: "S01 GİRİŞ", k: "84+20", t: "İSTASYON GİRİŞ" }
+            ],
+            yahsihan_bogazkopru: [
+                { s: "YAHŞİHAN", n: "ÇIKIŞ", k: "86+10", t: "İSTASYON ÇIKIŞ" },
+                { s: "YAHŞİHAN", n: "K052", k: "87+17", t: "DİĞER SİNYAL" },
+                { s: "YAHŞİHAN", n: "K062", k: "90+4", t: "DİĞER SİNYAL" },
+                { s: "KIRIKKALE", n: "GİRİŞ", k: "91+13", t: "İSTASYON GİRİŞ" },
+                { s: "KIRIKKALE", n: "ÇIKIŞ", k: "92+10", t: "İSTASYON ÇIKIŞ" },
+                { s: "KIRIKKALE", n: "K072", k: "94+5", t: "DİĞER SİNYAL" },
+                { s: "KIRIKKALE", n: "152 YAKLAŞMA", k: "99+6", t: "YAKLAŞMA" },
+                { s: "MAHMUTLAR", n: "GİRİŞ", k: "100+20", t: "İSTASYON GİRİŞ" },
+                { s: "MAHMUTLAR", n: "ÇIKIŞ", k: "101+30", t: "İSTASYON ÇIKIŞ" },
+                { s: "MAHMUTLAR", n: "112 YAKLAŞMA", k: "103+10", t: "YAKLAŞMA" },
+                { s: "MAHMUTLAR", n: "172", k: "107+9", t: "DİĞER SİNYAL" },
+                { s: "MAHMUTLAR", n: "182", k: "109+34", t: "DİĞER SİNYAL" },
+                { s: "MAHMUTLAR", n: "192", k: "111+20", t: "DİĞER SİNYAL" },
+                { s: "BALIŞIH", n: "GİRİŞ", k: "113+11", t: "İSTASYON GİRİŞ" },
+                { s: "BALIŞIH", n: "ÇIKIŞ", k: "114+10", t: "İSTASYON ÇIKIŞ" },
+                { s: "BALIŞIH", n: "S202", k: "115+12", t: "DİĞER SİNYAL" },
+                { s: "BALIŞIH", n: "212", k: "119+22", t: "DİĞER SİNYAL" },
+                { s: "BALIŞIH", n: "222 YAKLAŞMA", k: "124+7", t: "YAKLAŞMA" },
+                { s: "İZZETTİN", n: "GİRİŞ", k: "125+11", t: "İSTASYON GİRİŞ" },
+                { s: "İZZETTİN", n: "ÇIKIŞ", k: "126+9", t: "İSTASYON ÇIKIŞ" },
+                { s: "İZZETTİN", n: "232", k: "127+20", t: "DİĞER SİNYAL" },
+                { s: "İZZETTİN", n: "242", k: "131+10", t: "DİĞER SİNYAL" },
+                { s: "İZZETTİN", n: "3888 YAKLAŞMA", k: "133+29", t: "YAKLAŞMA" },
+                { s: "YAĞLI", n: "GİRİŞ", k: "135+11", t: "İSTASYON GİRİŞ" },
+                { s: "YAĞLI", n: "ÇIKIŞ", k: "136+10", t: "İSTASYON ÇIKIŞ" },
+                { s: "YAĞLI", n: "262", k: "137+30", t: "DİĞER SİNYAL" },
+                { s: "YAĞLI", n: "272", k: "141+11", t: "DİĞER SİNYAL" },
+                { s: "YAĞLI", n: "282 YAKLAŞMA", k: "145+2", t: "YAKLAŞMA" },
+                { s: "ÇERİKLİ", n: "GİRİŞ", k: "146+16", t: "İSTASYON GİRİŞ" },
+                { s: "ÇERİKLİ", n: "ÇIKIŞ", k: "147+9", t: "İSTASYON ÇIKIŞ" },
+                { s: "ÇERİKLİ", n: "S292", k: "149+0", t: "DİĞER SİNYAL" },
+                { s: "ÇERİKLİ", n: "S302", k: "154+11", t: "DİĞER SİNYAL" },
+                { s: "ÇERİKLİ", n: "312 YAKLAŞMA", k: "158+17", t: "YAKLAŞMA" },
+                { s: "YENİYAPAN", n: "GİRİŞ", k: "160+9", t: "İSTASYON GİRİŞ" },
+                { s: "YENİYAPAN", n: "ÇIKIŞ", k: "161+5", t: "İSTASYON ÇIKIŞ" },
+                { s: "YENİYAPAN", n: "—", k: "162+21", t: "ARA SİNYAL" },
+                { s: "YENİYAPAN", n: "—", k: "167+14", t: "ARA SİNYAL" },
+                { s: "YENİYAPAN", n: "—", k: "172+4", t: "ARA SİNYAL" },
+                { s: "YENİYAPAN", n: "YAKLAŞMA", k: "176+19", t: "YAKLAŞMA" },
+                { s: "SEKİLİ", n: "GİRİŞ", k: "178+13", t: "İSTASYON GİRİŞ" },
+                { s: "SEKİLİ", n: "ÇIKIŞ", k: "179+13", t: "İSTASYON ÇIKIŞ" },
+                { s: "SEKİLİ", n: "—", k: "181+5", t: "ARA SİNYAL" },
+                { s: "SEKİLİ", n: "—", k: "186+6", t: "ARA SİNYAL" },
+                { s: "SEKİLİ", n: "YAKLAŞMA", k: "191+18", t: "YAKLAŞMA" },
+                { s: "TATBEKİRLİ", n: "GİRİŞ", k: "193+0", t: "İSTASYON GİRİŞ" },
+                { s: "TATBEKİRLİ", n: "ÇIKIŞ", k: "193+18", t: "İSTASYON ÇIKIŞ" },
+                { s: "TATBEKİRLİ", n: "—", k: "195+17", t: "ARA SİNYAL" },
+                { s: "TATBEKİRLİ", n: "—", k: "198+9", t: "ARA SİNYAL" },
+                { s: "TATBEKİRLİ", n: "KORUMA (K082/K081)", k: "201+4", t: "KORUMA" },
+                { s: "YERKÖY", n: "GİRİŞ", k: "202+14", t: "İSTASYON GİRİŞ" },
+                { s: "YERKÖY", n: "ÇIKIŞ", k: "203+20", t: "İSTASYON ÇIKIŞ" },
+                { s: "YERKÖY", n: "KORUMA (K12/K11)", k: "205+16", t: "KORUMA" },
+                { s: "YERKÖY", n: "—", k: "210+2", t: "ARA SİNYAL" },
+                { s: "YERKÖY", n: "YAKLAŞMA", k: "215+4", t: "YAKLAŞMA" },
+                { s: "KARAOSMAN", n: "GİRİŞ", k: "216+22", t: "İSTASYON GİRİŞ" },
+                { s: "KARAOSMAN", n: "ÇIKIŞ", k: "217+20", t: "İSTASYON ÇIKIŞ" },
+                { s: "KARAOSMAN", n: "—", k: "219+15", t: "ARA SİNYAL" },
+                { s: "KARAOSMAN", n: "—", k: "223+0", t: "ARA SİNYAL" },
+                { s: "KARAOSMAN", n: "YAKLAŞMA", k: "227+16", t: "YAKLAŞMA" },
+                { s: "CAFERLİ", n: "GİRİŞ", k: "229+9", t: "İSTASYON GİRİŞ" },
+                { s: "CAFERLİ", n: "ÇIKIŞ", k: "230+5", t: "İSTASYON ÇIKIŞ" },
+                { s: "CAFERLİ", n: "—", k: "231+23", t: "ARA SİNYAL" },
+                { s: "CAFERLİ", n: "YAKLAŞMA", k: "236+18", t: "YAKLAŞMA" },
+                { s: "ŞEFAATLİ", n: "GİRİŞ", k: "238+18", t: "İSTASYON GİRİŞ" },
+                { s: "ŞEFAATLİ", n: "ÇIKIŞ", k: "239+8", t: "İSTASYON ÇIKIŞ" },
+                { s: "ŞEFAATLİ", n: "—", k: "241+15", t: "ARA SİNYAL" },
+                { s: "ŞEFAATLİ", n: "—", k: "245+17", t: "ARA SİNYAL" },
+                { s: "ŞEFAATLİ", n: "—", k: "250+7", t: "ARA SİNYAL" },
+                { s: "ŞEFAATLİ", n: "YAKLAŞMA", k: "254+19", t: "YAKLAŞMA" },
+                { s: "SARIKENT", n: "GİRİŞ", k: "256+7", t: "İSTASYON GİRİŞ" },
+                { s: "SARIKENT", n: "ÇIKIŞ", k: "257+1", t: "İSTASYON ÇIKIŞ" },
+                { s: "SARIKENT", n: "—", k: "258+11", t: "ARA SİNYAL" },
+                { s: "SARIKENT", n: "—", k: "263+7", t: "ARA SİNYAL" },
+                { s: "SARIKENT", n: "—", k: "266+13", t: "ARA SİNYAL" },
+                { s: "SARIKENT", n: "YAKLAŞMA", k: "271+6", t: "YAKLAŞMA" },
+                { s: "KANLICA", n: "GİRİŞ", k: "272+23", t: "İSTASYON GİRİŞ" },
+                { s: "KANLICA", n: "ÇIKIŞ", k: "273+18", t: "İSTASYON ÇIKIŞ" },
+                { s: "KANLICA", n: "—", k: "279+11", t: "ARA SİNYAL" },
+                { s: "KANLICA", n: "—", k: "283+19", t: "ARA SİNYAL" },
+                { s: "KANLICA", n: "YAKLAŞMA", k: "287+25", t: "YAKLAŞMA" },
+                { s: "FAKILI", n: "GİRİŞ", k: "289+11", t: "İSTASYON GİRİŞ" },
+                { s: "FAKILI", n: "ÇIKIŞ", k: "290+5", t: "İSTASYON ÇIKIŞ" },
+                { s: "FAKILI", n: "—", k: "291+17", t: "ARA SİNYAL" },
+                { s: "FAKILI", n: "YAKLAŞMA", k: "294+14", t: "YAKLAŞMA" },
+                { s: "FEHİMLİ", n: "GİRİŞ", k: "299+13", t: "İSTASYON GİRİŞ" },
+                { s: "FEHİMLİ", n: "ÇIKIŞ", k: "300+5", t: "İSTASYON ÇIKIŞ" },
+                { s: "FEHİMLİ", n: "—", k: "301+17", t: "ARA SİNYAL" },
+                { s: "FEHİMLİ", n: "—", k: "304+13", t: "ARA SİNYAL" },
+                { s: "FEHİMLİ", n: "YAKLAŞMA", k: "308+11", t: "YAKLAŞMA" },
+                { s: "PAŞALI", n: "GİRİŞ", k: "309+10", t: "İSTASYON GİRİŞ" },
+                { s: "PAŞALI", n: "ÇIKIŞ", k: "310+6", t: "İSTASYON ÇIKIŞ" },
+                { s: "PAŞALI", n: "—", k: "316+0", t: "ARA SİNYAL" },
+                { s: "PAŞALI", n: "—", k: "323+15", t: "ARA SİNYAL" },
+                { s: "PAŞALI", n: "YAKLAŞMA", k: "327+20", t: "YAKLAŞMA" },
+                { s: "HİMMETDEDE", n: "GİRİŞ", k: "329+1", t: "İSTASYON GİRİŞ" },
+                { s: "HİMMETDEDE", n: "—", k: "329+23", t: "ARA SİNYAL" },
+                { s: "HİMMETDEDE", n: "—", k: "331+21", t: "ARA SİNYAL" },
+                { s: "HİMMETDEDE", n: "—", k: "334+20", t: "ARA SİNYAL" },
+                { s: "HİMMETDEDE", n: "YAKLAŞMA", k: "337+13", t: "YAKLAŞMA" },
+                { s: "KALKANCIK", n: "GİRİŞ", k: "338+23", t: "İSTASYON GİRİŞ" },
+                { s: "KALKANCIK", n: "ÇIKIŞ", k: "339+13", t: "İSTASYON ÇIKIŞ" },
+                { s: "KALKANCIK", n: "—", k: "340+23", t: "ARA SİNYAL" },
+                { s: "KALKANCIK", n: "—", k: "344+13", t: "ARA SİNYAL" },
+                { s: "KALKANCIK", n: "YAKLAŞMA", k: "348+0", t: "YAKLAŞMA" },
+                { s: "BEYDEĞİRMENİ", n: "GİRİŞ", k: "349+9", t: "İSTASYON GİRİŞ" },
+                { s: "BEYDEĞİRMENİ", n: "ÇIKIŞ", k: "350+5", t: "İSTASYON ÇIKIŞ" },
+                { s: "BEYDEĞİRMENİ", n: "—", k: "352+2", t: "ARA SİNYAL" },
+                { s: "BEYDEĞİRMENİ", n: "—", k: "357+5", t: "ARA SİNYAL" },
+                { s: "BEYDEĞİRMENİ", n: "YAKLAŞMA", k: "362+15", t: "YAKLAŞMA" },
+                { s: "BOĞAZKÖPRÜ", n: "KORUMA (K22/K21)", k: "362+13", t: "KORUMA" },
+                { s: "BOĞAZKÖPRÜ", n: "M GİRİŞ", k: "364+00", t: "İSTASYON GİRİŞ" },
+                { s: "BOĞAZKÖPRÜ", n: "B GİRİŞ", k: "364+5", t: "İSTASYON GİRİŞ" },
+                { s: "BOĞAZKÖPRÜ", n: "BOĞAZKÖPRÜ", k: "—", t: "SON İSTASYON" }
+            ]
+        };
+
+        const $ = id => document.getElementById(id);
+        let currentData = [], cIdx = 0, bright = 0;
+
+        const cleanName = n => {
+            const cleaned = n.replace(/\s*(GİRİŞ|ÇIKIŞ|BLOK|YAKLAŞMA|VARYA)/g, '').trim();
+            return cleaned || n;
+        };
+
+        function startDriving() {
+            const selectedRoute = $('route-select').value;
+            currentData = routeDB[selectedRoute];
+            $('ui-route-name').innerText = $('route-select').options[$('route-select').selectedIndex].text;
+            toggleScreen(1);
+        }
+
+        function toggleScreen(drive) {
+            $('setup-screen').classList.toggle('hidden', drive);
+            $('driving-screen').classList.toggle('hidden', !drive);
+            if (drive) update(0);
+        }
+
+        function toggleModal(show) {
+            $('station-modal').classList.toggle('hidden', !show);
+            if (show) {
+                const uniqueStations = [...new Set(currentData.map(d => d.s))];
+                $('station-list-options').innerHTML = uniqueStations.map(stationName =>
+                    `<button class="station-option-btn" onclick="jumpToStation('${stationName}')">${stationName}</button>`
+                ).join('');
+            }
+        }
+
+        function jumpToStation(stationName) {
+            const index = currentData.findIndex(d => d.s === stationName);
+            if (index !== -1) update(index);
+            toggleModal(0);
+        }
+
+        function touch(e, dir) {
+            const zoneEl = $(dir === 1 ? 'zone-top' : 'zone-bottom');
+            zoneEl.classList.add('clicked');
+            setTimeout(() => zoneEl.classList.remove('clicked'), 120);
+
+            const card = $('main-display-card');
+            card.classList.add('pulse');
+            setTimeout(() => card.classList.remove('pulse'), 100);
+
+            const el = e.currentTarget, d = Math.max(el.clientWidth, el.clientHeight), rect = el.getBoundingClientRect();
+            const r = document.createElement("span");
+            r.className = "ripple-effect";
+            r.style.cssText = `width:${d}px;height:${d}px;left:${e.clientX - rect.left - d / 2}px;top:${e.clientY - rect.top - d / 2}px`;
+
+            if (el.firstChild) el.firstChild.remove();
+            el.appendChild(r);
+
+            update(Math.max(0, Math.min(currentData.length - 1, cIdx + dir)));
+        }
+
+        function navigateRow(direction) {
+            const newIndex = cIdx + direction;
+            if (newIndex >= 0 && newIndex < currentData.length) update(newIndex);
+        }
+
+        const wheelContainer = $('wheel-container');
+        let isDragging = false, startY = 0, startIdx = 0;
+
+        wheelContainer.addEventListener('touchstart', e => {
+            isDragging = true; startY = e.touches[0].clientY; startIdx = cIdx;
+        }, { passive: true });
+
+        wheelContainer.addEventListener('touchmove', e => {
+            if (!isDragging) return;
+            e.preventDefault();
+            const diff = startY - e.touches[0].clientY;
+            const step = Math.round(diff / 35);
+            const targetIdx = Math.max(0, Math.min(currentData.length - 1, startIdx + step));
+            if (targetIdx !== cIdx) update(targetIdx);
+        }, { passive: false });
+
+        wheelContainer.addEventListener('touchend', () => { isDragging = false; }, { passive: true });
+
+        function updateRow(rowId, prefix, data, emptyText) {
+            const row = $(rowId);
+            row.classList.toggle('empty', !data);
+            $(`p-${prefix}-s`).innerText = data ? data.s : "";
+            $(`p-${prefix}-n`).innerText = data ? cleanName(data.n) : emptyText;
+            $(`p-${prefix}-k`).innerText = data ? data.k : "";
+        }
+
+        function update(i) {
+            cIdx = i;
+            const curr = currentData[i];
+
+            $('m-station').innerText = curr.s;
+            $('m-km').innerText = curr.k;
+            $('m-type').innerText = curr.t;
+
+            $('p-curr-s').innerText = curr.s;
+            $('p-curr-n').innerText = cleanName(curr.n);
+            $('p-curr-k').innerText = curr.k;
+
+            updateRow('row-prev', 'prev', currentData[i - 1], "— BAŞLANGIÇ —");
+            updateRow('row-next', 'next', currentData[i + 1], "— SON SİNYAL —");
+        }
+
+        function toggleTheme() {
+            const cl = document.documentElement.classList, isDark = cl.contains('dark-mode');
+            cl.toggle('dark-mode', !isDark);
+            cl.toggle('light-mode', isDark);
+            $('btn-theme').innerText = isDark ? "☀️ Gündüz" : "🌙 Gece";
+        }
+
+        function toggleBright() {
+            bright = (bright + 1) % 3;
+            $('dimmer-overlay').style.cssText = bright === 0 ? 'opacity:0' : bright === 1 ? 'opacity:0.4' : 'opacity:0.75;background:#000';
+            $('btn-bright').innerText = bright === 0 ? '💡 Normal' : bright === 1 ? '🔅 Kısık' : '🌙 Karartma';
+        }
+
+        // PWA: Service Worker kaydı (offline çalışma için)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(reg => console.log('Service Worker kayıtlı:', reg.scope))
+                    .catch(err => console.error('Service Worker kayıt hatası:', err));
+            });
+        }
+    </script>
+</body>
+</html>
