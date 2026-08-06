@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sinyal-takip-v2';
+const CACHE_NAME = 'sinyal-takip-v4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
