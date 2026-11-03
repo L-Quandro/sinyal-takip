@@ -33,6 +33,19 @@
             --subtext-color: #666;
             --brand-blue: rgba(25,118,210,.75);
         }
+html.amoled-mode {
+    --bg-color: #000; --panel-bg: #000; --text-main: #d8d8d8;
+    --km-color: #00c853; --station-color: #e0a800;
+    --border-color: #1a1a1a; --wheel-bg: #000; --topbar-bg: #000;
+    --subtext-color: #777; --brand-blue: rgba(100,181,246,.12);
+}
+html.amoled-mode .display-card { box-shadow: none; }
+html.amoled-mode .station-badge { background: transparent; box-shadow: none; }
+html.amoled-mode .signal-type-tag, html.amoled-mode .control-btn,
+html.amoled-mode .station-option-btn, html.amoled-mode .select-box { background: #000; }
+html.amoled-mode .panel-row.active { background: rgba(0,200,83,.07); box-shadow: none; }
+html.amoled-mode .modal-overlay { background: rgba(0,0,0,.94); }
+
         * {
             box-sizing: border-box;
             user-select: none;
@@ -983,12 +996,31 @@
             updateRow('row-next', 'next', currentData[i + 1], "— SON SİNYAL —");
         }
         
-        function toggleTheme() {
-            const cl = document.documentElement.classList, isD = cl.contains('dark-mode');
-            cl.toggle('dark-mode', !isD); cl.toggle('light-mode', isD);
-            $('btn-theme').innerText = isD ? "☀️ Gündüz" : "🌙 Gece";
-            update(cIdx);
+        function applyTheme(t) {
+            const cl = document.documentElement.classList;
+            cl.remove('dark-mode', 'light-mode', 'amoled-mode');
+            if (t === 'light') cl.add('light-mode');
+            else { cl.add('dark-mode'); if (t === 'amoled') cl.add('amoled-mode'); }
+            currentTheme = t;
+            $('btn-theme').innerText = THEME_LABELS[t];
+            const meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.content = t === 'light' ? '#cbd5e1' : t === 'amoled' ? '#000000' : '#0a0a0c';
+            try { localStorage.setItem('sinyalTheme', t); } catch (e) {}
+            if (currentData.length) update(cIdx);
         }
+
+        function toggleTheme() {
+            applyTheme(THEMES[(THEMES.indexOf(currentTheme) + 1) % THEMES.length]);
+        }
+
+        // Açılışta son seçilen temayı geri yükle
+        const THEMES = ['dark', 'light', 'amoled'];
+        const THEME_LABELS = { dark: '🌙 Gece', light: '☀️ Gündüz', amoled: '⚫ AMOLED' };
+        let currentTheme = 'dark';
+        try {
+            const saved = localStorage.getItem('sinyalTheme');
+            if (THEMES.includes(saved)) applyTheme(saved);
+        } catch (e) {}
         
         function toggleBright() {
             bright = (bright + 1) % 3;
