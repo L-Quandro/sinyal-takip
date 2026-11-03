@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0a0a0c">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Sinyal Takip Sistemi</title>
     <style>
         :root {
@@ -989,6 +993,18 @@
             bright = (bright + 1) % 3;
             $('dimmer-overlay').style.cssText = bright === 0 ? 'opacity:0' : bright === 1 ? 'opacity:0.4' : 'opacity:0.75;background:#000';
             $('btn-bright').innerText = bright === 0 ? '💡 Normal' : bright === 1 ? '🔅 Kısık' : '🌙 Karartma';
+        }
+
+        // PWA: Service Worker kaydı ve otomatik güncelleme
+        if ('serviceWorker' in navigator) {
+            const hadController = !!navigator.serviceWorker.controller;
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js').then(reg => reg.update()).catch(() => {});
+            });
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                // Yeni sürüm devreye girdi. Sürüş sırasında sayfayı yenileme, sadece ayar ekranındaysan yenile.
+                if (hadController && !$('setup-screen').classList.contains('hidden')) location.reload();
+            });
         }
     </script>
 </body>
