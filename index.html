@@ -150,10 +150,10 @@
 
         .main-info-group { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; }
         .km-box { display: flex; align-items: baseline; gap: 8px; }
-        .km-label { font-size: 1.1rem; opacity: .7; font-weight: 600; }
+        .km-label { font-size: 1.4rem; opacity: .7; font-weight: 600; }
         
         .km-value { 
-            font-size: 2.6rem; font-weight: 800; color: var(--km-color); 
+            font-size: min(4rem, 15vw); font-weight: 800; color: var(--km-color); 
             letter-spacing: 1px; font-family: monospace; 
         }
         html.light-mode .km-value { color: #00642e; }
@@ -181,6 +181,7 @@
         .frac .num { border-bottom: .09em solid currentColor; padding-bottom: .12em; }
         .frac .den { padding-top: .12em; }
         .km-box { align-items: center; }
+        .km-value .frac .num, .km-value .frac .den { font-size: .8em; }
 
         /* Akıcı Çark Sistemli Alt Panel */
         .triple-panel-container {
@@ -238,7 +239,7 @@
             .top-bar { padding: 4px 10px; }
             .display-card { margin: 4px 10px; padding: 4px; }
             .station-badge { font-size: 0.95rem; padding: 4px 14px; margin-bottom: 4px; }
-            .km-value { font-size: 2rem; }
+            .km-value { font-size: 2.7rem; } .km-label { font-size: 1.1rem; }
             .signal-type-tag { margin-top: 2px; font-size: 0.75rem; padding: 2px 8px; }
             .brand-text { display: none; }
             .next-station { margin-top: 2px; font-size: .72rem; }
